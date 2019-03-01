@@ -65,7 +65,7 @@ param (
 	#Location the report will be saved to
 
 	[Parameter(ValueFromPipeline = $true, HelpMessage = "Enter desired directory path to save; Default: C:\Automation\")]
-	[String]$ReportSavePath = "C:\Automation\",
+	[String]$ReportSavePath = "C:\Automation\AD Report\",
 	#Find users that have not logged in X Amount of days, this sets the days
 
 	[Parameter(ValueFromPipeline = $true, HelpMessage = "Users that have not logged on in more than [X] days. amount of days; Default: 30")]
@@ -1889,7 +1889,6 @@ $FinalReport.Add($(Get-HTMLClosePage))
 $Day = (Get-Date).Day
 $Month = (Get-Date).Month
 $Year = (Get-Date).Year
-$domain = (Get-WmiObject Win32_ComputerSystem).Domain
 $ReportName = ("$domain _ $Day - $Month - $Year - AD Report")
 
 Save-HTMLReport -ReportContent $FinalReport -ShowReport -ReportName $ReportName -ReportPath $ReportSavePath
