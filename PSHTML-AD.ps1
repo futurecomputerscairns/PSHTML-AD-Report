@@ -53,11 +53,11 @@ param (
 	
 	#Company logo that will be displayed on the left, can be URL or UNC
 	[Parameter(ValueFromPipeline = $true, HelpMessage = "Enter URL or UNC path to Company Logo")]
-	[String]$CompanyLogo = "",
+	[String]$CompanyLogo = "https://irp-cdn.multiscreensite.com/6c87c673/dms3rep/multi/mobile/Future%202016%20Logo-533x133.png",
 	#Logo that will be on the right side, UNC or URL
 
 	[Parameter(ValueFromPipeline = $true, HelpMessage = "Enter URL or UNC path for Side Logo")]
-	[String]$RightLogo = "https://www.psmpartners.com/wp-content/uploads/2017/10/porcaro-stolarek-mete.png",
+	[String]$RightLogo = "",
 	#Title of generated report
 
 	[Parameter(ValueFromPipeline = $true, HelpMessage = "Enter desired title for report")]
@@ -118,6 +118,16 @@ function LastLogonConvert ($ftDate)
 	
 } #End function LastLogonConvert
 
+function Expand-ZIPFile($file, $destination)
+{
+$shell = new-object -com shell.application
+$zip = $shell.NameSpace($file)
+foreach($item in $zip.items())
+{
+$shell.Namespace($destination).copyhere($item)
+}
+}
+
 #Check for ReportHTML Module
 $Mod = Get-Module -ListAvailable -Name "ReportHTML"
 
@@ -126,9 +136,13 @@ If ($null -eq $Mod)
 	
 	Write-Host "ReportHTML Module is not present, attempting to install it"
 	
-	Install-Module -Name ReportHTML -Force
-	Import-Module ReportHTML -ErrorAction SilentlyContinue
-}
+	mkdir "C:\temp\ReportHTML" -ErrorAction SilentlyContinue
+    Invoke-Webrequest -URI "https://psg-prod-eastus.azureedge.net/packages/reporthtml.1.4.1.1.nupkg" -OutFile "C:\temp\reporthtml.zip"
+    Expand-ZIPFile -file "C:\temp\reporthtml.zip" -destination "C:\temp\reporthtml\"
+    Import-Module "C:\temp\reporthtml\ReportHtml.psd1"
+    }
+	
+
 
 #Array of default Security Groups
 $DefaultSGs = @(
@@ -1175,7 +1189,52 @@ Write-Host "Done!" -ForegroundColor White
 ############################>
 Write-Host "Working on Group Policy Report..." -ForegroundColor Green
 
+$drivearray = @()
+try
+{
+Import-Module GroupPolicy -ErrorAction Stop
+}
+catch
+{
+throw "Module GroupPolicy not Installed"
+}
+        $GPO = Get-GPO -All
+ 
+        foreach ($Policy in $GPO){
+ 
+                $GPOID = $Policy.Id
+                $GPODom = $Policy.DomainName
+                $GPODisp = $Policy.DisplayName
+ 
+                 if (Test-Path "\\$($GPODom)\SYSVOL\$($GPODom)\Policies\{$($GPOID)}\User\Preferences\Drives\Drives.xml")
+                 {
+                     [xml]$DriveXML = Get-Content "\\$($GPODom)\SYSVOL\$($GPODom)\Policies\{$($GPOID)}\User\Preferences\Drives\Drives.xml"
+ 
+                            foreach ( $drivemap in $DriveXML.Drives.Drive ){
+
+                                    $GPOName = $GPODisp
+                                    $DriveLetter = $drivemap.Properties.Letter + ":"
+                                    $DrivePath = $drivemap.Properties.Path
+                                    $DriveAction = $drivemap.Properties.action.Replace("U","Update").Replace("C","Create").Replace("D","Delete").Replace("R","Replace")
+                                    $DriveLabel = $drivemap.Properties.label
+                                    $DrivePersistent = $drivemap.Properties.persistent.Replace("0","False").Replace("1","True")
+                                    [String]$DriveFilterGroup = $drivemap.Filters.FilterGroup.Name
+ 
+                                    $Object = New-Object PSObject 
+                                    $object | Add-Member -MemberType NoteProperty -Name GPOName -Value $GpoName
+                                    $object | Add-Member -MemberType NoteProperty -Name DriveLetter -Value $DriveLetter
+                                    $object | Add-Member -MemberType NoteProperty -Name DrivePath -Value $DrivePath
+                                    $object | Add-Member -MemberType NoteProperty -Name DriveAction -Value $DriveAction
+                                    $object | Add-Member -MemberType NoteProperty -Name DriveLabel -Value $DriveLabel
+                                    $object | Add-Member -MemberType NoteProperty -Name DrivePersistent -Value $DrivePersistent
+                                    $object | Add-Member -MemberType NoteProperty -Name DriveFilterGroup -Value $DriveFilterGroup
+                                    $drivearray += $Object
+                                }
+                            }
+                }
+
 $GPOTable = New-Object 'System.Collections.Generic.List[System.Object]'
+$MappedDriveTable = New-Object 'System.Collections.Generic.List[System.Object]'
 
 foreach ($GPO in $GPOs)
 {
@@ -1196,10 +1255,34 @@ if (($GPOTable).Count -eq 0)
 	
 	$Obj = [PSCustomObject]@{
 		
-		Information = 'Information: No Group Policy Obejects were found'
+		Information = 'Information: No Group Policy Objects were found'
 	}
 	$GPOTable.Add($obj)
 }
+
+foreach ($drive in $drivearray)
+{
+	
+	$obj = [PSCustomObject]@{
+		
+		'Drive Letter' = $Drive.DriveLetter
+        'Drive Label' = $Drive.DriveLabel
+		'Drive Path' = $Drive.DrivePath
+		'Assigned Security Group' = $Drive.DriveFilterGroup
+		}
+	
+	$MappedDriveTable.Add($obj)
+}
+if (($GPOTable).Count -eq 0)
+{
+	
+	$Obj = [PSCustomObject]@{
+		
+		Information = 'Information: No Group Policy Mapped Drives were found'
+	}
+	$MappedDriveTable.Add($obj)
+}
+
 Write-Host "Done!" -ForegroundColor White
 <###########################
 
@@ -1771,12 +1854,15 @@ $FinalReport.Add($(Get-HTMLTabContentopen -TabName $tabarray[4] -TabHeading ("Re
 $FinalReport.Add($(Get-HTMLContentOpen -HeaderText "Group Policies"))
 $FinalReport.Add($(Get-HTMLContentDataTable $GPOTable -HideFooter))
 $FinalReport.Add($(Get-HTMLContentClose))
+$FinalReport.Add($(Get-HTMLContentOpen -HeaderText "Group Policy Mapped Drives"))
+$FinalReport.Add($(Get-HTMLContentTable $MappedDriveTable -HideFooter))
+$FinalReport.Add($(Get-HTMLContentClose))
 $FinalReport.Add($(Get-HTMLTabContentClose))
 
 #Computers Report
 $FinalReport.Add($(Get-HTMLTabContentopen -TabName $tabarray[5] -TabHeading ("Report: " + (Get-Date -Format MM-dd-yyyy))))
 
-$FinalReport.Add($(Get-HTMLContentOpen -HeaderText "Computers Overivew"))
+$FinalReport.Add($(Get-HTMLContentOpen -HeaderText "Computers Overview"))
 $FinalReport.Add($(Get-HTMLContentTable $TOPComputersTable -HideFooter))
 $FinalReport.Add($(Get-HTMLContentClose))
 
@@ -1803,6 +1889,7 @@ $FinalReport.Add($(Get-HTMLClosePage))
 $Day = (Get-Date).Day
 $Month = (Get-Date).Month
 $Year = (Get-Date).Year
-$ReportName = ("$Day - $Month - $Year - AD Report")
+$domain = (Get-WmiObject Win32_ComputerSystem).Domain
+$ReportName = ("$domain _ $Day - $Month - $Year - AD Report")
 
 Save-HTMLReport -ReportContent $FinalReport -ShowReport -ReportName $ReportName -ReportPath $ReportSavePath
