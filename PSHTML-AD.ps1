@@ -964,7 +964,7 @@ $userphaventloggedonrecentlytable = New-Object 'System.Collections.Generic.List[
 foreach ($User in $AllUsers)
 {
 	
-	$AttVar = $User | Select-Object Enabled, PasswordExpired, PasswordLastSet, PasswordNeverExpires, PasswordNotRequired, Name, SamAccountName, EmailAddress, AccountExpirationDate, @{ Name = 'lastlogon'; Expression = { LastLogonConvert $_.lastlogon } }, DistinguishedName
+	$AttVar = $User | Select-Object Enabled, PasswordExpired, PasswordLastSet, PasswordNeverExpires, PasswordNotRequired, Name, SamAccountName, Department, Created, EmailAddress, AccountExpirationDate, @{ Name = 'lastlogon'; Expression = { LastLogonConvert $_.lastlogondate } }, DistinguishedName
 	$maxPasswordAge = (Get-ADDefaultDomainPasswordPolicy).MaxPasswordAge.Days
 	
 	if ((($AttVar.PasswordNeverExpires) -eq $False) -and (($AttVar.Enabled) -ne $false))
@@ -1012,8 +1012,10 @@ foreach ($User in $AllUsers)
 			
 			'Name' = $User.Name
 			'UserPrincipalName' = $User.UserPrincipalName
+			'Department' = $AttVar.Department
 			'Enabled' = $AttVar.Enabled
 			'Protected from Deletion' = $User.ProtectedFromAccidentalDeletion
+			'CreationDate' = $AttVar.Created
 			'Last Logon' = $AttVar.lastlogon
 			'Password Never Expires' = $AttVar.PasswordNeverExpires
 			'Days Until Password Expires' = $daystoexpire
@@ -1065,6 +1067,9 @@ foreach ($User in $AllUsers)
 	$UPN = $User.UserPrincipalName
 	$Enabled = $AttVar.Enabled
 	$EmailAddress = $AttVar.EmailAddress
+	$Department = $AttVar.Department
+	$CreationDate = $AttVar.Created
+	$LastLogon = $AttVar.LastLogon
 	$AccountExpiration = $AttVar.AccountExpirationDate
 	$PasswordExpired = $AttVar.PasswordExpired
 	$PasswordLastSet = $AttVar.PasswordLastSet
@@ -1077,6 +1082,8 @@ foreach ($User in $AllUsers)
 		'UserPrincipalName'	      = $UPN
 		'Enabled'				  = $Enabled
 		'Protected from Deletion' = $User.ProtectedFromAccidentalDeletion
+		'Department'			  = $Department
+		'Creation Date'			  = $CreationDate
 		'Last Logon'			  = $LastLogon
 		'Email Address'		      = $EmailAddress
 		'Account Expiration'	  = $AccountExpiration
